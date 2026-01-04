@@ -12,12 +12,14 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
+import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
@@ -38,17 +40,32 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
     ) throws IOException {
 
         DefaultOAuth2User oauth2User = (DefaultOAuth2User) authentication.getPrincipal();
+        Map<String, Object> attributes = oauth2User.getAttributes();
 
-        String email = (String) oauth2User.getAttributes().get("email");
-        String username = (String) oauth2User.getAttributes().get("username");
-        String provider = (String) oauth2User.getAttributes().get("provider");
+        OAuth2AuthenticationToken authToken = (OAuth2AuthenticationToken) authentication;
+        String provider = authToken.getAuthorizedClientRegistrationId();
 
-        if (email == null) {
-            throw new IllegalStateException("OAuth2 authentication missing email");
+        String email = (String) attributes.get("email");
+
+        String username = (String) attributes.get("username");
+
+        if (username == null) {
+            username = (String) attributes.get("login");
         }
 
+        if (username == null) {
+            username = email.split("@")[0];
+        }
+
+        if (email == null) {
+            throw new IllegalStateException("OAuth2 provider did not return an email address.");
+        }
+
+        String finalUsername = username;
+        String finalProvider = provider;
+
         User user = userService.findByEmail(email)
-                .orElseGet(() -> registerNewUser(email, username, provider));
+                .orElseGet(() -> registerNewUser(email, finalUsername, finalProvider));
 
         String jwt = jwtUtils.generateTokenFromUsername(
                 UserDetailsImpl.build(user)
@@ -64,7 +81,6 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
     }
 
     private User registerNewUser(String email, String username, String provider) {
-
         Role role = roleRepository.findByRoleName(AppRole.ROLE_USER)
                 .orElseThrow(() -> new IllegalStateException("ROLE_USER not found"));
 
