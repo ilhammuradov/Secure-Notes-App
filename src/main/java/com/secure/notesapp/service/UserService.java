@@ -16,6 +16,10 @@ public interface UserService {
 
     User findByUsername(String username);
 
+    Optional<User> findByEmail(String email);
+
+    User registerUser(User user);
+
     void updatePassword(Long userId, String password);
 
     void generatePasswordResetToken(String email);
